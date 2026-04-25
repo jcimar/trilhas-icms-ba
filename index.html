@@ -144,6 +144,40 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .campo{margin-bottom:10px}
 .cval{font-size:12px;color:#1a1a1a;line-height:1.5}
 
+/* Menu lateral */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;display:none;opacity:0;transition:opacity 0.25s}
+.overlay.vis{display:block;opacity:1}
+.sidemenu{position:fixed;top:0;left:0;width:300px;max-width:88vw;height:100%;background:#fff;
+  z-index:201;transform:translateX(-100%);transition:transform 0.25s ease;
+  display:flex;flex-direction:column;box-shadow:4px 0 20px rgba(0,0,0,0.15)}
+.sidemenu.open{transform:translateX(0)}
+.sm-hdr{background:#1a1a1a;color:#fff;padding:16px;display:flex;align-items:center;
+  justify-content:space-between;flex-shrink:0}
+.sm-hdr-title{font-size:15px;font-weight:700}
+.sm-hdr-date{font-size:11px;opacity:0.7;margin-top:2px}
+.sm-close{font-size:22px;cursor:pointer;line-height:1;padding:4px}
+.sm-tabs{display:flex;border-bottom:1px solid #e0e0e0;flex-shrink:0}
+.sm-tab{flex:1;padding:10px;text-align:center;font-size:13px;font-weight:600;
+  color:#888;cursor:pointer;border-bottom:3px solid transparent}
+.sm-tab.on{color:#1a1a1a;border-bottom-color:#1a1a1a}
+.sm-body{overflow-y:auto;flex:1;padding:12px}
+.sm-dia{margin-bottom:12px;border:1px solid #e8e8e8;border-radius:10px;overflow:hidden}
+.sm-dia-hdr{padding:8px 12px;background:#f5f5f5;font-size:12px;font-weight:700;
+  cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.sm-dia-hdr.hoje{background:#1a1a1a;color:#fff}
+.sm-slot{margin-bottom:8px;padding:10px;border-radius:8px;background:#f8f8f8;border:1px solid #eee}
+.sm-slot-hora{font-size:10px;font-weight:700;color:#888;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em}
+.sm-slot-nome{font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:6px}
+.sm-slot-prog{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.sm-slot-pb{flex:1;height:4px;background:#e0e0e0;border-radius:2px;overflow:hidden}
+.sm-slot-pf{height:100%;background:#1a1a1a;border-radius:2px}
+.sm-slot-pct{font-size:10px;color:#666;white-space:nowrap}
+.sm-slot-btn{width:100%;padding:8px;background:#1a1a1a;color:#fff;border:none;
+  border-radius:7px;font-size:12px;font-weight:600;cursor:pointer}
+.sm-slot-btn:active{background:#333}
+.sm-slot-other{font-size:12px;color:#888;font-style:italic;padding:2px 0}
+.hdr-menu{font-size:22px;cursor:pointer;padding:2px 8px 2px 0;line-height:1;flex-shrink:0}
+
 /* Separador de bloco */
 .bloco-sep{background:#1a1a1a;color:#fff;padding:8px 14px;font-size:11px;font-weight:700;
 letter-spacing:0.08em;text-transform:uppercase;margin:10px 0 6px;border-radius:8px}
@@ -188,10 +222,26 @@ letter-spacing:0.08em;text-transform:uppercase;margin:10px 0 6px;border-radius:8
 </head>
 <body>
 <div class="app">
+<div class="overlay" id="smOverlay" onclick="fecharMenu()"></div>
+<div class="sidemenu" id="sidemenu">
+  <div class="sm-hdr">
+    <div>
+      <div class="sm-hdr-title" id="smTitulo">Agenda de Estudos</div>
+      <div class="sm-hdr-date" id="smData"></div>
+    </div>
+    <span class="sm-close" onclick="fecharMenu()">&#10005;</span>
+  </div>
+  <div class="sm-tabs">
+    <div class="sm-tab on" id="smTabHoje" onclick="smMudarAba('hoje')">Hoje</div>
+    <div class="sm-tab" id="smTabSem" onclick="smMudarAba('semana')">Semana</div>
+  </div>
+  <div class="sm-body" id="smBody"></div>
+</div>
 <div class="hdr">
+  <span class="hdr-menu" id="btnMenu" onclick="abrirMenu()">&#9776;</span>
   <span class="hdr-back" id="btnV" onclick="voltarHome()">&#8249;</span>
   <div><h1 id="hT">Trilhas ICMS-BA 2026</h1>
-  <div class="hdr-sub" id="hS">Fase de estudo &middot; 7 trilhas</div></div>
+  <div class="hdr-sub" id="hS">Fase de estudo &middot; 8 trilhas</div></div>
 </div>
 <div class="home" id="telaHome">
   <div class="resumo">
@@ -919,6 +969,130 @@ function voltarHome(){
   document.getElementById('hS').textContent='Fase de estudo \u00b7 '+Object.keys(TB).length+' trilhas';
   trilhaAtual=null;renderHome();
 }
+
+// ── Mapa semanal fixo ─────────────────────────────────────────────────────────
+const MAPA_SEM = {
+  0:[{horario:"4h–6h",   tid:"T1", label:"TIC"}],
+  1:[{horario:"4h–6h",   tid:"T1", label:"TIC"}],
+  2:[{horario:"4h–6h",   tid:"T3", label:"Dir. Tributário"}],
+  3:[{horario:"4h–5h",   tid:"T3", label:"Dir. Tributário"},
+     {horario:"5h–6h",   tid:null, label:"Francês"},
+     {horario:"19h–22h30",tid:"T3", label:"Dir. Tributário"}],
+  4:[{horario:"4h–6h",   tid:"T1", label:"TIC"},
+     {horario:"19h–20h", tid:null, label:"Inglês"}],
+  5:[{horario:"4h–5h",   tid:"T4", label:"Dir. Constitucional"},
+     {horario:"5h–6h",   tid:"T5", label:"Dir. Administrativo"},
+     {horario:"8h–11h",  tid:"T6", label:"Contabilidade"},
+     {horario:"16h–19h", tid:"T2", label:"Língua Portuguesa"}],
+  6:[{horario:"8h–11h30",tid:"T7", label:"Mat./Estatística"},
+     {horario:"13h–15h", tid:"T4", label:"Dir. Constitucional"}]
+};
+const DIAS_NOMES = ["Segunda","Terça","Quarta","Quinta","Sexta","Sábado","Domingo"];
+const DIAS_CURTO = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+let smAbaAtual = 'hoje';
+let swipeStartX = 0;
+
+// ── Swipe para abrir ──────────────────────────────────────────────────────────
+document.addEventListener('touchstart', e => {
+  swipeStartX = e.touches[0].clientX;
+}, {passive:true});
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].clientX - swipeStartX;
+  if(swipeStartX < 30 && dx > 60) abrirMenu();
+  else if(dx < -60 && document.getElementById('sidemenu').classList.contains('open')) fecharMenu();
+}, {passive:true});
+
+function abrirMenu(){
+  const hoje = new Date();
+  const diaIdx = (hoje.getDay()+6)%7; // 0=Seg
+  const meses = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  document.getElementById('smData').textContent =
+    `${DIAS_NOMES[diaIdx]}, ${hoje.getDate()} ${meses[hoje.getMonth()]}`;
+  document.getElementById('sidemenu').classList.add('open');
+  document.getElementById('smOverlay').classList.add('vis');
+  renderSmAba(smAbaAtual);
+}
+
+function fecharMenu(){
+  document.getElementById('sidemenu').classList.remove('open');
+  document.getElementById('smOverlay').classList.remove('vis');
+}
+
+function smMudarAba(aba){
+  smAbaAtual = aba;
+  document.getElementById('smTabHoje').className = 'sm-tab'+(aba==='hoje'?' on':'');
+  document.getElementById('smTabSem').className  = 'sm-tab'+(aba==='semana'?' on':'');
+  renderSmAba(aba);
+}
+
+function renderSmAba(aba){
+  const hoje = new Date();
+  const diaIdx = (hoje.getDay()+6)%7;
+  if(aba==='hoje'){
+    document.getElementById('smBody').innerHTML = renderSmDia(diaIdx, true);
+  } else {
+    let html='';
+    for(let d=0;d<7;d++){
+      html += renderSmDia(d, d===diaIdx, true);
+    }
+    document.getElementById('smBody').innerHTML = html;
+    // Expande dia atual automaticamente
+    const bodyEl = document.getElementById(`smd-body-${diaIdx}`);
+    if(bodyEl) bodyEl.style.display='block';
+  }
+}
+
+function renderSmDia(diaIdx, isHoje, comHeader=false){
+  const slots = MAPA_SEM[diaIdx] || [];
+  let slotsHTML = '';
+  slots.forEach(slot => {
+    if(slot.tid){
+      const t = TB[slot.tid];
+      const p = t ? calcProgresso(slot.tid) : {pct:0,ok:0,tot:0};
+      slotsHTML += `<div class="sm-slot">
+        <div class="sm-slot-hora">${slot.horario}</div>
+        <div class="sm-slot-nome">${slot.tid} — ${slot.label}</div>
+        <div class="sm-slot-prog">
+          <div class="sm-slot-pb"><div class="sm-slot-pf" style="width:${p.pct}%"></div></div>
+          <span class="sm-slot-pct">${p.pct}% (${p.ok}/${p.tot})</span>
+        </div>
+        <button class="sm-slot-btn" onclick="fecharMenu();abrirTrilha('${slot.tid}')">
+          → Estudar agora
+        </button>
+      </div>`;
+    } else {
+      slotsHTML += `<div class="sm-slot">
+        <div class="sm-slot-hora">${slot.horario}</div>
+        <div class="sm-slot-other">${slot.label}</div>
+      </div>`;
+    }
+  });
+
+  if(!comHeader){
+    // Modo "Hoje" — sem header de dia
+    return `<div style="margin-bottom:4px">${slotsHTML||'<div style="color:#888;font-size:12px;padding:8px">Nenhum slot de estudo hoje.</div>'}</div>`;
+  }
+
+  // Modo "Semana" — com header clicável
+  const hdrClass = isHoje ? 'sm-dia-hdr hoje' : 'sm-dia-hdr';
+  const badge = isHoje ? '<span style="font-size:10px;background:#fff;color:#1a1a1a;padding:2px 7px;border-radius:10px;margin-left:6px">Hoje</span>' : '';
+  const nSlots = slots.filter(s=>s.tid).length;
+  return `<div class="sm-dia">
+    <div class="${hdrClass}" onclick="toggleSmDia(${diaIdx})">
+      <span>${DIAS_NOMES[diaIdx]}${badge}</span>
+      <span style="font-size:10px;opacity:0.7">${nSlots} trilha${nSlots!==1?'s':''}</span>
+    </div>
+    <div id="smd-body-${diaIdx}" style="display:none;padding:8px">
+      ${slotsHTML||'<div style="color:#888;font-size:12px;padding:4px">Nenhum slot de estudo.</div>'}
+    </div>
+  </div>`;
+}
+
+function toggleSmDia(diaIdx){
+  const el = document.getElementById(`smd-body-${diaIdx}`);
+  if(el) el.style.display = el.style.display==='block' ? 'none' : 'block';
+}
+
 
 init();
 </script>
