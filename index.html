@@ -355,18 +355,26 @@ function iniciarAutoSave(){
   autoSaveInterval=setInterval(()=>{
     if(!trilhaAtual) return;
     const t=TB[trilhaAtual];
-    if(!t||t.modo!=='topicos') return;
-    // Salva todos os tópicos com cronômetro rodando
-    (t.topicos||[]).forEach(top=>{
-      (top.materiais||[]).forEach(m=>{
-        const key=`${top.id}_${m.id}`;
-        const c=cronoState[key];
+    if(!t) return;
+    if(t.modo==='topicos'){
+      (t.topicos||[]).forEach(top=>{
+        (top.materiais||[]).forEach(m=>{
+          const key=`${top.id}_${m.id}`;
+          const c=cronoState[key];
+          if(c&&(c.running||c.sessao>0||c.acumulado>0)){
+            salvarMat(trilhaAtual,top.id,m.id,false,true);
+          }
+        });
+      });
+    } else if(t.modo==='modulos'){
+      (t.aulas||[]).forEach(a=>{
+        const c=cronoState[a.num];
         if(c&&(c.running||c.sessao>0||c.acumulado>0)){
-          salvarMat(trilhaAtual,top.id,m.id,false,true); // silent
+          salvar(trilhaAtual,a.num,true);
         }
       });
-    });
-  },5*60*1000); // 5 minutos
+    }
+  },5*60*1000);
 }
 
 // ── Home ──────────────────────────────────────────────────────────────────────
@@ -682,6 +690,7 @@ async function salvarMat(tid,topId,matId,autoStop=false,silent=false){
 // ── Modo módulos (T1) ─────────────────────────────────────────────────────────
 function renderAulaHTML(tid,a){
   const st=getSt(tid,a.num),mn=getPag(tid,a.num);
+  const acum=getAcum(tid,a.num)+(getCrono(a.num).acumulado||0);
   const nc=st==='concluida'?'ok':st==='andamento'?'and':(a.tipo==='questoes'?'q':'');
   const tit=(a.titulo||[])[0]||`Aula ${a.num}`;
   const numDisp=String(a.num).includes('-')?String(a.num).split('-')[1]:a.num;
@@ -699,6 +708,19 @@ function renderAulaHTML(tid,a){
     </div>
     <div class="apanel" id="ap-${a.num}">
       <div class="campo"><div class="clbl">Duração</div><div class="cval">${a.duracao||'—'}</div></div>
+      <div class="crono-wrap">
+        <div class="crono-display" id="crono-${a.num}">00:00</div>
+        <div class="crono-btns">
+          <button class="cbtn start" onclick="cronoStart('${a.num}')">▶ Start</button>
+          <button class="cbtn pause" onclick="cronoPause('${a.num}')">⏸ Pause</button>
+          <button class="cbtn stop" onclick="cronoStopAula('${a.num}','${tid}')">⏹ Stop</button>
+          <button class="cbtn reset" onclick="cronoReset('${a.num}')">↺ Reset</button>
+        </div>
+        <div class="crono-tempos">
+          <span><span id="csessao-${a.num}">0min</span><strong>Sessão</strong></span>
+          <span><span id="cacum-${a.num}">${fmtTempoLeg(acum)}</span><strong>Total</strong></span>
+        </div>
+      </div>
       <div class="reg">
         <div class="reg-t">Registrar progresso</div>
         <div class="rg"><div class="rl">Status</div>
@@ -721,6 +743,7 @@ function renderAulaHTML(tid,a){
         </div>
         <button class="bsalvar" onclick="salvar('${tid}','${a.num}')">Salvar</button>
         <div class="msg" id="mg-${a.num}">Salvo!</div>
+        <div class="autosave-ind" id="as-${a.num}">✓ auto-salvo</div>
       </div>
     </div>
   </div>`;
@@ -768,20 +791,41 @@ function selSt(tid,n,val,btn){
   stSel[tid][n]=val;
 }
 
-async function salvar(tid,n){
+function cronoStopAula(n,tid){
+  const c=getCrono(n);
+  if(c.running){
+    c.sessao+=Math.floor((Date.now()-c.startTs)/1000);
+    c.running=false;
+    clearInterval(c.interval);
+  }
+  c.acumulado+=c.sessao;
+  c.sessao=0;
+  atualizaDisplay(n);
+  // Auto-save ao stop
+  salvar(tid,n,true);
+}
+
+async function salvar(tid,n,silent=false){
   const mn=parseInt(document.getElementById(`mn-${n}`)?.value)||0;
   const cm=document.getElementById(`cm-${n}`)?.value||'';
   const st=stSel[tid]?.[n]||getSt(tid,n)||'andamento';
+  const c=getCrono(n);
+  const acum=c.acumulado+getAcum(tid,n);
   if(!prog[tid])prog[tid]={};
-  prog[tid][n]={status:st,pagina_atual:mn,comentario:cm,tempo_acumulado:0};
+  prog[tid][n]={status:st,pagina_atual:mn,comentario:cm,tempo_acumulado:acum};
   try{
     await fetch(SCRIPT_URL,{method:'POST',body:JSON.stringify({
       action:'save',trilha_id:tid,aula_num:n,status:st,
-      pag_atual:mn,topicos_cobertos:[],comentario:cm
+      pag_atual:mn,topicos_cobertos:[],comentario:cm,tempo_acumulado:acum
     })});
   }catch(e){}
-  const mg=document.getElementById(`mg-${n}`);
-  if(mg){mg.style.display='block';setTimeout(()=>mg.style.display='none',1800);}
+  if(!silent){
+    const mg=document.getElementById(`mg-${n}`);
+    if(mg){mg.style.display='block';setTimeout(()=>mg.style.display='none',1800);}
+  } else {
+    const as=document.getElementById(`as-${n}`);
+    if(as){as.style.display='block';setTimeout(()=>as.style.display='none',2000);}
+  }
   const p=calcProgresso(tid);
   const pf=document.getElementById('tPF');
   const pt=document.getElementById('tPT');
@@ -803,6 +847,7 @@ async function salvar(tid,n){
       }
     }
   }
+  renderMetaSemanal(tid);
 }
 
 // ── Fase 2 ────────────────────────────────────────────────────────────────────
